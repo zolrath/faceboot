@@ -1,0 +1,95 @@
+#! /usr/bin/env ruby
+# Posts to facebook from the command-line
+require 'optparse'
+require_relative '../lib/faceboot'
+
+include ConfigFileHandler
+
+@options = {}
+optparse = OptionParser.new do |opts|
+  opts.banner = "FaceBoot, it's completely useless!"
+  opts.separator ""
+  opts.separator "Commands:"
+  opts.separator "    post [text]: Post supplied text to Facebook Status."
+  opts.separator "    like: Like a random post on the main Facebook page."
+  opts.separator ""
+  opts.separator "If the --save flag is passed with the email and password, they will be saved."
+  opts.separator "Otherwise, they must be entered each time."
+  opts.separator ""
+  opts.separator "Options:"
+
+  @options[:email] = nil
+  opts.on('-e', '--email EMAIL', 'Set your login email') do |email|
+    @options[:email] = email
+  end
+
+  @options[:password] = nil
+  opts.on('-p', '--pass PASSWORD', 'Set your login password') do |pass|
+    @options[:password] = pass
+  end
+
+  @options[:save] = false
+  opts.on('--save', 'Save your username/password to disk.') do
+    @options[:save] = true
+  end
+
+  opts.on('-h', '--help', 'Display this screen') do
+    puts opts
+    exit
+  end
+end
+
+optparse.parse!
+
+# Load Saved Login Details
+if @options[:email].nil? && @options[:password].nil?
+  ConfigFileHandler.load_config
+  @stored_email, @decrypted_pass = ConfigFileHandler.config
+end
+
+# Save Supplied Login Details to ~/.faceboot_config
+if @options[:save] && @options[:email] && @options[:password]
+  ConfigFileHandler.config = [@options[:email], @options[:password]]
+  @saved = ConfigFileHandler.save_config!
+end
+
+def login_to_facebook
+  bob = FaceBoot.new
+  bob.login(@options[:email] || @stored_email, @options[:password] || @decrypted_pass)
+end
+
+# Post supplied message to Facebook.
+def post(message)
+  login_to_facebook
+  bob.post(message)
+end
+
+# Like a random post on the main Facebook page.
+def like
+  login_to_facebook
+  bob.like
+end
+
+# Make sure that we have the email and password, either supplied on the command-line
+# or loaded from a previously saved configuration file.
+if (@options[:email] || @stored_email) && (@options[:password] || @decrypted_pass)
+  case ARGV[0]
+  when "post"
+    # Check to see if we have text coming in from STDIN, if so, prefer that over
+    # ARGV as I respect the power of the pipe.
+    post(STDIN.tty? ? ARGV[1] : STDIN.read)
+    exit
+  when "like"
+    STDOUT.puts "We like nothing Lebowski!"
+  else
+    unless STDIN.tty?
+      post(STDIN.read)
+      exit
+    end
+    STDOUT.puts @saved || optparse
+  end
+else
+  STDOUT.puts "You must supply an email (-e) and password (-p) or save them, otherwise you must supply them every time.
+  See help (-h) for details"
+end
+
